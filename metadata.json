@@ -1,0 +1,6 @@
+{
+  "name": "JobVibe AI",
+  "description": "Recruitment AI Pipeline: Resume Analyser, Live AI Interview Engine, Real-Time Vision Analyser, and Scoring Report Generator",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
