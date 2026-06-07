@@ -46,20 +46,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 2. Sidebar Configuration
-st.sidebar.image("https://openrouter.ai/favicon.ico", width=40)
+st.sidebar.image("https://cryptologos.cc/logos/chatgpt-gpt-logo.png" if not os.path.exists("groq.ico") else "groq.ico", width=40)
 st.sidebar.title("Configuration Control")
-st.sidebar.write("### Powered by OpenRouter Free Tier")
+st.sidebar.write("### Powered by Groq Free Tier")
 
-# Model options matching the interactive playground
+# Model options matching our custom Groq interactive playground
 model_options = {
-    "Mistral: 7B Instruct (Free) [RECOMMENDED]": "mistralai/mistral-7b-instruct:free",
-    "Google: Gemini 2.0 Flash (Free)": "google/gemini-2.0-flash:free",
-    "Meta: Llama 3 8B (Free)": "meta-llama/llama-3-8b-instruct:free",
-    "DeepSeek: R1 (Free / Auto-Fallback)": "deepseek/deepseek-r1:free",
-    "Google: Gemini 2.0 Pro (Free)": "google/gemini-2.0-pro-exp-02-05:free",
-    "Meta: Llama 3.3 70B (Free)": "meta-llama/llama-3.3-70b-instruct:free",
-    "Meta: Llama 3.1 8B (Free)": "meta-llama/llama-3.1-8b-instruct:free",
-    "Google: Gemini 2.0 Flash (Paid)": "google/gemini-2.0-flash"
+    "Meta: Llama 3.1 8B (Free) [RECOMMENDED]": "llama-3.1-8b-instant",
+    "Mistral: Mixtral 8x7B (Free)": "mixtral-8x7b-32768",
+    "Google: Gemma 2 9B (Free)": "gemma2-9b-it",
+    "Meta: Llama 3.3 70B (Free)": "llama-3.3-70b-versatile"
 }
 
 selected_model_name = st.sidebar.selectbox("Choose AI Model", list(model_options.keys()))
@@ -68,12 +64,12 @@ model_tag = model_options[selected_model_name]
 # Secrets / API Key configuration
 st.sidebar.write("---")
 st.sidebar.write("### 🔑 API Authentication")
-env_key = os.environ.get("OPENROUTER_API_KEY", "")
+env_key = os.environ.get("GROQ_API_KEY", "")
 api_key_input = st.sidebar.text_input(
-    "OpenRouter API Key",
+    "Groq API Key",
     value=env_key,
     type="password",
-    help="If configured in AI Studio Secrets, this defaults automatically. Or obtain a key from https://openrouter.ai/keys"
+    help="If configured in AI Studio Secrets, this defaults automatically. Or obtain a key from https://console.groq.com/keys"
 )
 
 # Advanced parameters
@@ -87,13 +83,13 @@ st.sidebar.write("---")
 st.sidebar.write("### 💡 Running this locally:")
 st.sidebar.code("""
 pip install streamlit requests
-st_key = "your_openrouter_api_key"
+st_key = "your_groq_api_key"
 # set in environment variable or configure in streamlit_app.py
 """, language="bash")
 
 # 3. Main Header
-st.title("🤖 OpenRouter Streamlit AI Sandbox")
-st.caption("A responsive python dashboard orchestrating next-gen models via the OpenRouter Free API mesh.")
+st.title("🤖 Groq Streamlit AI Sandbox")
+st.caption("A responsive python dashboard orchestrating next-gen models via the ultra-high speed Groq Free API mesh.")
 
 # System Prompt Configuration
 st.write("### 📑 System Prompt Persona")
@@ -125,51 +121,47 @@ if user_prompt := st.chat_input("Enter your message..."):
         st.markdown(user_prompt)
     st.session_state.messages.append({"role": "user", "content": user_prompt})
 
-    # Prepare payloads for OpenRouter
-    effective_api_key = api_key_input.strip() if api_key_input else os.environ.get("OPENROUTER_API_KEY", "")
+    # Prepare payloads for Groq
+    effective_api_key = api_key_input.strip() if api_key_input else os.environ.get("GROQ_API_KEY", "")
 
     if not effective_api_key:
         with st.chat_message("assistant"):
-            st.error("🔑 **Authentication Missing**: No OpenRouter token found. Please enter your OpenRouter API Key in the sidebar text input, or set the `OPENROUTER_API_KEY` secret variable in the AI Studio platform Secrets menu.")
+            st.error("🔑 **Authentication Missing**: No Groq token found. Please enter your Groq API Key in the sidebar text input, or set the `GROQ_API_KEY` secret variable in the AI Studio platform Secrets menu.")
         st.stop()
 
     headers = {
         "Authorization": f"Bearer {effective_api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://my-streamlit-app.streamlit.app",
-        "X-Title": "JobVibe AI"
+        "Content-Type": "application/json"
     }
 
     # Format historical chat context
-    openrouter_messages = [{"role": "system", "content": system_prompt}]
+    groq_messages = [{"role": "system", "content": system_prompt}]
     for msg in st.session_state.messages:
-        openrouter_messages.append({
+        groq_messages.append({
             "role": "user" if msg["role"] == "user" else "assistant",
             "content": msg["content"]
         })
 
     payload = {
         "model": model_tag,
-        "messages": openrouter_messages,
+        "messages": groq_messages,
         "temperature": temperature,
         "top_p": top_p,
-        "max_tokens": min(max_tokens, 1000)
+        "max_tokens": min(max_tokens, 1200)
     }
 
     # API call simulation with fallbacks
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         
-        # Adaptive self-healing candidates cascade
+        # Adaptive self-healing candidates cascade for Groq
         target_tag = model_tag
-        if model_tag in ["deepseek/deepseek-r1:free", "deepseek/deepseek-r1-0528:free", "google/gemini-2.1-flash:free", "google/gemini-2.5-flash:free", "meta-llama/llama-3-8b-instruct:free"]:
-            target_tag = "mistralai/mistral-7b-instruct:free"
-
         candidates = [
             target_tag,
-            "mistralai/mistral-7b-instruct:free",
-            "google/gemini-2.0-flash:free",
-            "meta-llama/llama-3.3-70b-instruct:free"
+            "mixtral-8x7b-32768",
+            "llama-3.1-8b-instant",
+            "gemma2-9b-it",
+            "llama-3.3-70b-versatile"
         ]
 
         # Deduplicate
@@ -185,9 +177,9 @@ if user_prompt := st.chat_input("Enter your message..."):
 
         for idx, current_model in enumerate(unique_candidates):
             if idx == 0:
-                message_placeholder.markdown(f"🌌 *Contacting OpenRouter for model: `{current_model}`...*")
+                message_placeholder.markdown(f"🌌 *Contacting Groq node for model: `{current_model}`...*")
             else:
-                message_placeholder.markdown(f"🔄 *[Fallback Mode] model `{model_tag}` failed or rate-limited. Recovering with candidate: `{current_model}`...*")
+                message_placeholder.markdown(f"🔄 *[Fallback Mode] model `{model_tag}` is rate-limited. Recovering with candidate: `{current_model}`...*")
                 
             payload["model"] = current_model
             
@@ -195,9 +187,9 @@ if user_prompt := st.chat_input("Enter your message..."):
             max_retries = 2
             for attempt in range(1, max_retries + 1):
                 try:
-                    # Querying the OpenRouter REST interface
+                    # Querying the Groq REST interface
                     response = requests.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
+                        "https://api.groq.com/openai/v1/chat/completions",
                         headers=headers,
                         data=json.dumps(payload),
                         timeout=30
@@ -209,7 +201,7 @@ if user_prompt := st.chat_input("Enter your message..."):
                         
                         # Highlight if fallback was triggered
                         if current_model != model_tag:
-                            st.warning(f"⚠️ **Failover Safehouse**: `{model_tag}` is currently congested or rate-limited. Successfully recovered using fallback candidate `{current_model}`!")
+                            st.warning(f"⚠️ **Failover Safehouse**: `{model_tag}` is currently rate-limited on your Groq key. Successfully recovered using fallback candidate `{current_model}`!")
                             
                         message_placeholder.markdown(assistant_response)
                         st.session_state.messages.append({"role": "assistant", "content": assistant_response})
@@ -218,9 +210,9 @@ if user_prompt := st.chat_input("Enter your message..."):
                         break
                     else:
                         try:
-                            last_error = response.json().get('error', {}).get('message', 'Unknown Node error status.')
+                            last_error = response.json().get('error', {}).get('message', 'Unknown Groq error status.')
                         except Exception:
-                            last_error = response.text or 'Failure contacting REST node.'
+                            last_error = response.text or 'Failure contacting Groq REST node.'
                         last_status = response.status_code
                         
                         # If rate limited (429), sleep (exponential delay) before retrying or cascading
@@ -243,13 +235,9 @@ if user_prompt := st.chat_input("Enter your message..."):
 
         if not success:
             helpful_tip = ""
-            if "endpoint" in last_error.lower() or "endpoints" in last_error.lower() or last_status == 404:
-                helpful_tip = " \n\n🔒 **OpenRouter Account Data Settings Lock-out**: Free models require data collection/logging permission. If your OpenRouter API token profile enforces \"Data Collection: Deny\", OpenRouter throws a 404 No Endpoints. To fix, go to **openrouter.ai -> Settings -> Privacy** and allow data sharing/logging!"
-            elif last_status == 429 or "429" in last_error or "rate limit" in last_error.lower():
-                helpful_tip = " \n\n⛔ **429: Provider Rate Limit Exceeded**: The OpenRouter public free pool for this model is experiencing extremely heavy traffic congestion right now.\n\n🛠️ **How to fix this instantly**:\n1. **Use a Paid Model**: Switch to **Google: Gemini 2.0 Flash (Paid)** in the sidebar (guarantees separate high-priority dedicated pipelines with 0 rate limit failures).\n2. **Switch Free Models**: Try selecting a stable option such as **Meta: Llama 3 8B (Free)** or **Mistral: 7B Instruct (Free)**. Different models are served by different nodes with separate limits.\n3. **Cooldown**: Wait 5–10 seconds and resend your text."
-            
-            # Check for API key rate limits or validation problems
-            if last_status == 401:
-                helpful_tip = " \n\n🔑 **Credential Check**: Please check if your OpenRouter API Key is entered correctly and has positive balance if required."
+            if last_status == 429 or "429" in last_error or "rate limit" in last_error.lower():
+                helpful_tip = " \n\n⛔ **429: Groq Rate Limit Exceeded**: Your Groq API key or the public pool is rate-limited.\n\n🛠 *How to fix*:\n1. Wait 5-10 seconds and retry.\n2. Switch models in the dropdown.\n3. Verify your Groq Console dashboard usage metrics."
+            elif last_status == 401:
+                helpful_tip = " \n\n🔑 **Credential Check**: Please check if your Groq API Key has been typed correctly in the sidebar."
                 
             message_placeholder.error(f"Error {last_status}: {last_error}{helpful_tip}")

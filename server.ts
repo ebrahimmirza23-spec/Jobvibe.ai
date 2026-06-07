@@ -314,12 +314,13 @@ Produce a precise evaluation in JSON structure. Do not output anything outside t
 });
 
 /**
- * Route: Proxy OpenRouter Chat Completions for our integrated Streamlit-like interface
+ * Route: Proxy Groq Chat Completions (points to api.groq.com)
+ * Both /api/groq/chat and /api/openrouter/chat trigger this for maximum backward and forward stability.
  */
-app.post('/api/openrouter/chat', async (req: Request, res: Response) => {
+const groqChatHandler = async (req: Request, res: Response) => {
   try {
     const {
-      model = 'mistralai/mistral-7b-instruct:free',
+      model = 'llama-3.1-8b-instant',
       messages,
       temperature = 0.7,
       top_p = 0.9,
@@ -332,50 +333,63 @@ app.post('/api/openrouter/chat', async (req: Request, res: Response) => {
     }
 
     // Prioritize client-provided API key from UI config, then server env variable
-    const effectiveKey = userApiKey || process.env.OPENROUTER_API_KEY || '';
+    const effectiveKey = userApiKey || process.env.GROQ_API_KEY || '';
 
     if (!effectiveKey) {
       return res.status(401).json({
-        error: 'OpenRouter Authentication Missing: Please provide an OpenRouter API key in the panel or configure the OPENROUTER_API_KEY secret in your settings.'
+        error: 'Groq Authentication Missing: Please provide a Groq API key in the panel or configure the GROQ_API_KEY secret in your settings.'
       });
     }
 
-    const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://my-streamlit-app.streamlit.app',
-      'X-Title': 'JobVibe AI',
       'Authorization': `Bearer ${effectiveKey}`
     };
 
-    // Build adaptive candidates list. Default to stable options if deprecated/unstable models are requested.
+    // Normalize incoming OpenRouter models to corresponding stable Groq models
     let targetModel = model;
+    const modelLower = model.toLowerCase();
     
-    // Normalize deprecated/unstable/traffic-congested models specifically requested
     if (
-      model === 'deepseek/deepseek-r1:free' ||
-      model === 'deepseek/deepseek-r1-0528:free' ||
-      model === 'google/gemini-2.1-flash:free' ||
-      model === 'google/gemini-2.5-flash:free' ||
-      model === 'google/gemini-2.0-flash-exp:free' ||
-      model === 'meta-llama/llama-3-8b-instruct:free'
+      modelLower.includes('mistral') || 
+      modelLower.includes('deepseek') || 
+      modelLower.includes('mixtral')
     ) {
-      targetModel = 'mistralai/mistral-7b-instruct:free';
+      targetModel = 'mixtral-8x7b-32768';
+    } else if (
+      modelLower.includes('llama-3-8b') ||
+      modelLower.includes('llama-3.1-8b') ||
+      modelLower.includes('llama-3.1') ||
+      modelLower.includes('llama3-8b')
+    ) {
+      targetModel = 'llama-3.1-8b-instant';
+    } else if (
+      modelLower.includes('llama-3.3') ||
+      modelLower.includes('llama-3.3-70b') ||
+      modelLower.includes('llama3-70b')
+    ) {
+      targetModel = 'llama-3.3-70b-versatile';
+    } else if (modelLower.includes('gemini') || modelLower.includes('gemma')) {
+      targetModel = 'gemma2-9b-it';
+    } else if (!modelLower.includes('-')) {
+      // If it is a generic name or doesn't match Groq pattern, default to recommended mixtral-8x7b-32768
+      targetModel = 'mixtral-8x7b-32768';
     }
 
-    // Secondary and tertiary highly stable free fallback candidates
+    // Secondary and tertiary highly stable free fallback candidates on Groq
     const candidates = [
       targetModel,
-      'mistralai/mistral-7b-instruct:free',
-      'google/gemini-2.0-flash:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'qwen/qwen-2.5-7b-instruct:free'
+      'mixtral-8x7b-32768',
+      'llama-3.1-8b-instant',
+      'gemma2-9b-it',
+      'llama-3.3-70b-versatile'
     ];
 
     // Remove duplicates while preserving original sequence hierarchy
     const uniqueCandidates = Array.from(new Set(candidates));
 
-    let lastError = 'No completed request to OpenRouter';
+    let lastError = 'No completed request to Groq';
     let lastStatus = 500;
     let success = false;
     let data: any = null;
@@ -386,7 +400,7 @@ app.post('/api/openrouter/chat', async (req: Request, res: Response) => {
 
     // Outer candidate cascade loop
     for (const currentModel of uniqueCandidates) {
-      // Inner retry loop per candidate model (up to 2 attempts with exponential backoff on 429)
+      // Inner retry loop per candidate model (up to 2 attempts with backoff on 429)
       const maxRetries = 2;
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -395,10 +409,10 @@ app.post('/api/openrouter/chat', async (req: Request, res: Response) => {
             messages,
             temperature,
             top_p,
-            max_tokens: Math.min(max_tokens, 1000) // Keep token size moderate for free models to optimize routing
+            max_tokens: Math.min(max_tokens, 1200) // Keep token size moderate for free models on Groq
           };
 
-          const response = await fetch(openRouterUrl, {
+          const response = await fetch(groqUrl, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload)
@@ -419,26 +433,25 @@ app.post('/api/openrouter/chat', async (req: Request, res: Response) => {
             parsedErr = { error: { message: errText } };
           }
           
-          lastError = parsedErr?.error?.message || `OpenRouter responded with status ${response.status}`;
+          lastError = parsedErr?.error?.message || `Groq responded with status ${response.status}`;
           lastStatus = response.status;
 
-          console.warn(`[OpenRouter API Proxy] Model "${currentModel}" failed (Attempt ${attempt}/${maxRetries}): Error "${lastError}" (HTTP ${response.status})`);
+          console.warn(`[Groq API Proxy] Model "${currentModel}" failed (Attempt ${attempt}/${maxRetries}): Error "${lastError}" (HTTP ${response.status})`);
 
           if (response.status === 429) {
             if (attempt < maxRetries) {
               const backoffMs = attempt * 1200;
-              console.warn(`[OpenRouter Retry Cooloff] Encountered status 429. Sleeping ${backoffMs}ms before retry attempt ${attempt + 1}...`);
+              console.warn(`[Groq Retry Cooloff] Encountered status 429. Sleeping ${backoffMs}ms before retry attempt ${attempt + 1}...`);
               await sleep(backoffMs);
               continue; // Trigger retry attempt
             }
           }
           
-          // For other non-recoverable errors (e.g. 400 Bad request, 401 Auth, etc.) or exhausted retries, break inner loop to try next model candidate
           break;
         } catch (err: any) {
-          lastError = err?.message || 'Network fetch timeout to OpenRouter';
+          lastError = err?.message || 'Network fetch timeout to Groq';
           lastStatus = 500;
-          console.error(`[OpenRouter Network Timeout/Error] Failed on model "${currentModel}" (Attempt ${attempt}):`, err);
+          console.error(`[Groq Network Timeout/Error] Failed on model "${currentModel}" (Attempt ${attempt}):`, err);
           break;
         }
       }
@@ -450,10 +463,8 @@ app.post('/api/openrouter/chat', async (req: Request, res: Response) => {
 
     if (!success) {
       let helpfulTip = '';
-      if (lastError.toLowerCase().includes('endpoint') || lastError.toLowerCase().includes('endpoints') || lastStatus === 404) {
-        helpfulTip = ' \n\n💡 [Senior Applet Debugger Guideline]: If you get "No endpoints found matching your parameters", this indicates that either: (1) Free tier providers are fully saturated, OR (2) Your OpenRouter Account Privacy configuration blocks free tiers ("Data Collection: Deny"). Free models require logging permissions. Go to your OpenRouter Dashboard -> Settings -> Privacy, and turn on Data Logging to authorize the API route.';
-      } else if (lastStatus === 429 || lastError.toLowerCase().includes('429') || lastError.toLowerCase().includes('rate limit')) {
-        helpfulTip = ' \n\n⛔ **429: Provider Rate Limit Exceeded**: The OpenRouter public free pool is under heavy traffic volume.\n\n🛠️ **Suggested Remedy**:\n1. **Use a Paid Model**: Switch model to **Google: Gemini 2.0 Flash (Paid)** (uses reserved dedicated low-latency nodes).\n2. **Cooldown**: Wait 5–10 seconds and submit again.\n3. **Switch Models**: Run requests on Llama 3 or Mistral which rely on distinct node structures.';
+      if (lastStatus === 429 || lastError.toLowerCase().includes('429') || lastError.toLowerCase().includes('rate limit')) {
+        helpfulTip = ' \n\n⛔ **429: Groq Rate Limit Exceeded**: The Groq free tier is experiencing heavy traffic.\n\n🛠️ **Remedy**: Switch to a different model (like Gemma 2 or Llama 3.1 8B), or wait 10 seconds and resend your request.';
       }
       return res.status(lastStatus).json({ 
         error: `${lastError}${helpfulTip}`
@@ -469,12 +480,15 @@ app.post('/api/openrouter/chat', async (req: Request, res: Response) => {
 
     return res.json(data);
   } catch (error: any) {
-    console.error('Error in /api/openrouter/chat:', error);
+    console.error('Error in Groq chat proxy handler:', error);
     return res.status(500).json({
-      error: error?.message || 'Failed connecting to OpenRouter global nodes'
+      error: error?.message || 'Failed connecting to Groq global nodes'
     });
   }
-});
+};
+
+app.post('/api/groq/chat', groqChatHandler);
+app.post('/api/openrouter/chat', groqChatHandler);
 
 /**
  * Handle static files in production
